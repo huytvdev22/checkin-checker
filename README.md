@@ -2,7 +2,9 @@
 
 Công cụ phân tích dữ liệu chấm công mạnh mẽ, riêng tư và hoàn toàn miễn phí.
 
-**Truy cập ngay tại:** [checkin-checker.web.app](https://checkin-checker.web.app)
+**Truy cập:**
+- [checkin-checker.web.app](https://checkin-checker.web.app) (Firebase)
+- [checkin-checker.pages.dev](https://checkin-checker.pages.dev) (Cloudflare - Tốc độ cao)
 
 ## ✨ Tính năng chính
 
