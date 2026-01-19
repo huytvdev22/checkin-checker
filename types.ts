@@ -19,14 +19,14 @@ export interface RawLog {
 }
 
 export enum DayStatus {
-  NORMAL = 'Normal',
-  LATE = 'Late',
-  EARLY_ALLOWED = 'Early (Quota Used)',
-  EARLY_VIOLATION = 'Early (Violation)', // > 1.5h or > 3 times
-  ABSENT = 'Absent',
-  WEEKEND = 'Weekend',
-  MISSING_IN = 'Missing Check-In',
-  MISSING_OUT = 'Missing Check-Out'
+  NORMAL = 'Bình thường',
+  LATE = 'Đi muộn',
+  EARLY_ALLOWED = 'Về sớm (Trong hạn mức)',
+  EARLY_VIOLATION = 'Về sớm (Vi phạm)',
+  ABSENT = 'Vắng mặt',
+  WEEKEND = 'Cuối tuần',
+  MISSING_IN = 'Thiếu giờ vào',
+  MISSING_OUT = 'Thiếu giờ ra'
 }
 
 export interface DailyRecord {

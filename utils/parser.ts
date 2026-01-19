@@ -2,42 +2,49 @@ import { parse, isValid, startOfDay, isFriday, isWeekend, format, addDays, diffe
 import { RawLog, DailyRecord, DayStatus, ShiftConfig } from '../types';
 import { FRIDAY_EARLY_MINUTES, QUOTA_EARLY_LEAVE_COUNT, QUOTA_EARLY_LEAVE_MINUTES } from '../constants';
 
-// Regex to find date/time patterns like:
-// Case 1: "01/15/26 6:19:15PM" (US)
-// Case 2: "16/01/26 9:19:00CH" (VN)
-const DATETIME_REGEX = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2}):(\d{2})(AM|PM|SA|CH)/gi;
+// Regex to find date/time patterns
+const DATETIME_REGEX = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM|SA|CH)/gi;
 
 export const parseRawInput = (input: string): RawLog[] => {
   const logs: RawLog[] = [];
-  const matches = input.matchAll(DATETIME_REGEX);
+  const matches = Array.from(input.matchAll(DATETIME_REGEX));
+
+  if (matches.length === 0) return [];
+
+  // Determine date format for the entire input based on the first unambiguous date
+  // e.g. if we see 13/01, it's DD/MM. If we see 01/13, it's MM/DD.
+  let determinedFormat: 'dd/MM/yyyy' | 'MM/dd/yyyy' | null = null;
+
+  for (const match of matches) {
+    const p1 = parseInt(match[1]);
+    const p2 = parseInt(match[2]);
+    if (p1 > 12) {
+      determinedFormat = 'dd/MM/yyyy';
+      break;
+    } else if (p2 > 12) {
+      determinedFormat = 'MM/dd/yyyy';
+      break;
+    }
+  }
+
+  // Default to MM/DD/YYYY if still ambiguous (Original logic preference)
+  const finalFormat = determinedFormat || 'MM/dd/yyyy';
 
   for (const match of matches) {
     const [fullStr, p1, p2, yearPart, hour, minute, second, meridiemRaw] = match;
-    
-    // Normalize meridiem for date-fns (SA -> AM, CH -> PM)
-    const meridiem = meridiemRaw.toUpperCase() === 'SA' ? 'AM' : 
-                     meridiemRaw.toUpperCase() === 'CH' ? 'PM' : 
-                     meridiemRaw.toUpperCase();
+
+    // Normalize meridiem (SA -> AM, CH -> PM)
+    const meridiem = meridiemRaw.toUpperCase() === 'SA' ? 'AM' :
+      meridiemRaw.toUpperCase() === 'CH' ? 'PM' :
+        meridiemRaw.toUpperCase();
 
     // Normalize Year
-    const yearFull = yearPart.length === 2 
+    const yearFull = yearPart.length === 2
       ? (parseInt(yearPart) < 50 ? `20${yearPart}` : `19${yearPart}`)
       : yearPart;
-    
-    // Heuristic for DD/MM vs MM/DD
-    // If first part > 12, it must be Day (DD/MM/YYYY)
-    // If second part > 12, it must be Day (MM/DD/YYYY)
-    // Default to MM/DD/YYYY if ambiguous (as per original logic)
-    let formatStr = 'MM/dd/yyyy h:mm:ssa';
-    let dateString = `${p1}/${p2}/${yearFull} ${hour}:${minute}:${second}${meridiem}`;
 
-    if (parseInt(p1) > 12) {
-      formatStr = 'dd/MM/yyyy h:mm:ssa';
-    } else if (parseInt(p2) > 12) {
-      formatStr = 'MM/dd/yyyy h:mm:ssa';
-    }
-    
-    const parsedDate = parse(dateString, formatStr, new Date());
+    const dateString = `${p1}/${p2}/${yearFull} ${hour}:${minute}:${second}${meridiem}`;
+    const parsedDate = parse(dateString, `${finalFormat} h:mm:ssa`, new Date());
 
     if (isValid(parsedDate)) {
       logs.push({
@@ -48,18 +55,17 @@ export const parseRawInput = (input: string): RawLog[] => {
     }
   }
 
-  // Sort logs by time ascending
   return logs.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 };
 
 export const analyzeAttendance = (
-  logs: RawLog[], 
-  shift: ShiftConfig, 
+  logs: RawLog[],
+  shift: ShiftConfig,
   range?: { start?: Date, end?: Date }
 ): DailyRecord[] => {
   // Group by Date String (YYYY-MM-DD)
   const groupedByDate: Record<string, Date[]> = {};
-  
+
   logs.forEach(log => {
     const dayKey = format(log.timestamp, 'yyyy-MM-dd');
     if (!groupedByDate[dayKey]) groupedByDate[dayKey] = [];
@@ -69,7 +75,7 @@ export const analyzeAttendance = (
   // Determine Range (Start Date to End Date)
   let startDate: Date;
   let endDate: Date;
-  
+
   const sortedDates = Object.keys(groupedByDate).sort();
   const hasLogs = sortedDates.length > 0;
 
@@ -89,13 +95,13 @@ export const analyzeAttendance = (
   } else if (hasLogs) {
     endDate = parseISO(sortedDates[sortedDates.length - 1]);
   } else {
-     endDate = startDate;
+    endDate = startDate;
   }
-  
+
   if (startDate > endDate) return [];
 
   const results: DailyRecord[] = [];
-  
+
   // Helper to track monthly quotas
   // Key: "YYYY-MM", Value: count of allowed early leaves
   const monthlyQuotaUsage: Record<string, number> = {};
@@ -105,7 +111,7 @@ export const analyzeAttendance = (
     const dayKey = format(currentDate, 'yyyy-MM-dd');
     const timestamps = groupedByDate[dayKey] || [];
     const isWknd = isWeekend(currentDate);
-    
+
     const record: DailyRecord = {
       date: currentDate,
       checkIn: null,
@@ -128,7 +134,7 @@ export const analyzeAttendance = (
         // Heuristic: If before 12:00 PM -> Likely CheckIn, missing CheckOut
         // If >= 12:00 PM -> Likely CheckOut, missing CheckIn
         const noon = set(currentDate, { hours: 12, minutes: 0, seconds: 0 });
-        
+
         if (singleLog < noon) {
           record.checkIn = singleLog;
           record.checkOut = null;
@@ -164,13 +170,13 @@ export const analyzeAttendance = (
         // Calculate Expected End Time
         const [eh, em] = shift.endTime.split(':').map(Number);
         let expectedEnd = set(currentDate, { hours: eh, minutes: em, seconds: 0 });
-        
+
         let noteSuffix = "";
 
         // Friday Rule: Leave 1 hour early
         if (record.isFriday) {
-           expectedEnd = set(currentDate, { hours: eh - 1, minutes: em, seconds: 0 });
-           noteSuffix = " (Thứ 6 về sớm 1h)";
+          expectedEnd = set(currentDate, { hours: eh - 1, minutes: em, seconds: 0 });
+          noteSuffix = " (Thứ 6 về sớm 1h)";
         }
 
         // Check if left early
@@ -189,9 +195,9 @@ export const analyzeAttendance = (
           } else {
             record.status.push(DayStatus.EARLY_VIOLATION);
             if (diff > QUOTA_EARLY_LEAVE_MINUTES) {
-                record.notes.push(`Về sớm ${diff} phút (Vượt quá 1.5h)${noteSuffix}`);
+              record.notes.push(`Về sớm ${diff} phút (Vượt quá 1.5h)${noteSuffix}`);
             } else {
-                record.notes.push(`Về sớm ${diff} phút (Hết quota tháng)${noteSuffix}`);
+              record.notes.push(`Về sớm ${diff} phút (Hết quota tháng)${noteSuffix}`);
             }
           }
         }
